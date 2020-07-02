@@ -478,14 +478,17 @@ def quantile(x, q, weights=None):
         cdf = np.append(0, cdf)
         return np.interp(q, cdf, x[idx]).tolist()
 
-
 def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
            ax=None, color=None, quiet=False,
            plot_datapoints=True, plot_density=True,
            plot_contours=True, no_fill_contours=False, fill_contours=False,
            contour_kwargs=None, contourf_kwargs=None, data_kwargs=None,
-           pcolor_kwargs=None, **kwargs):
-           
+           pcolor_kwargs=None,
+           no_white_contours=False, # custom arg -mtm
+           no_line_contours=False, # custom arg -mtm
+           max_alpha=1.0, # custom arg -mtm
+           alpha_list=None, # custom arg -mtm
+           **kwargs):
     """
     Plot a 2-D histogram of samples.
 
@@ -537,6 +540,25 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
         Any additional keyword arguments to pass to the `pcolor` method when
         adding the density colormap.
 
+    no_white_contours : bool
+        Custom argument added by MTM. If True, disables the default
+        white fill contourf that is called to cover up dense regions.
+
+    no_line_contours : bool
+       Custom argument added by MTM. If True, doesn't draw any lines,
+       but still allows contourf (filled contours) to be drawn.
+
+    max_alpha : float
+       Custom argument added by MTM. Sets the maximum opacity for
+       contourf colors. 1.0 by default.
+
+    alpha_list : array_like
+       Custom argument added by MTM.
+       A one-dimensional array_like container of floats specifying the
+       opacity of each of the contour levels. 
+       Should be len = len(levels)+1.
+       If not specified, default behavior is to use max_alpha to
+       automatically determine contour opacities.
     """
     if ax is None:
         ax = pl.gca()
@@ -570,9 +592,18 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
     # This "color map" is the list of colors for the contour levels if the
     # contours are filled.
     rgba_color = colorConverter.to_rgba(color)
-    contour_cmap = [list(rgba_color) for l in levels] + [rgba_color]
-    for i, l in enumerate(levels):
-        contour_cmap[i][-1] *= float(i) / (len(levels)+1)
+    contour_cmap = [list(rgba_color) for l in levels] + [list(rgba_color)]
+    
+    #for i, l in enumerate(levels):
+    #    contour_cmap[i][-1] *= float(i) / (len(levels)+1) # adjust the opacity of each level
+
+    # modified by mtm
+    if alpha_list is not None and len(alpha_list)==len(contour_cmap):
+        for i,c in enumerate(contour_cmap):
+            contour_cmap[i][-1] = alpha_list[i] # use specified opacity for each level
+    else:
+        for i,c in enumerate(contour_cmap):
+            contour_cmap[i][-1] *= max_alpha*float(i)/(len(contour_cmap)-1) # set opacity of each level
 
     # We'll make the 2D histogram to directly estimate the density.
     try:
@@ -646,7 +677,7 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
         ax.plot(x, y, "o", zorder=-1, rasterized=True, **data_kwargs)
 
     # Plot the base fill to hide the densest data points.
-    if (plot_contours or plot_density) and not no_fill_contours:
+    if (plot_contours or plot_density) and not no_fill_contours and not no_white_contours:
         ax.contourf(X2, Y2, H2.T, [V.min(), H.max()],
                     cmap=white_cmap, antialiased=False)
 
@@ -667,11 +698,11 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
         ax.pcolor(X, Y, H.max() - H.T, cmap=density_cmap, **pcolor_kwargs)
 
     # Plot the contour edge colors.
-    if plot_contours:
+    if plot_contours and not no_line_contours:
         if contour_kwargs is None:
             contour_kwargs = dict()
         contour_kwargs["colors"] = contour_kwargs.get("colors", color)
         ax.contour(X2, Y2, H2.T, V, **contour_kwargs)
-
+        
     ax.set_xlim(range[0])
     ax.set_ylim(range[1])
